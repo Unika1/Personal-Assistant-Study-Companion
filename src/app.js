@@ -4,8 +4,10 @@ const bodyParser = require('body-parser');
 const cookieParser = require('cookie-parser');
 
 const authRoutes = require('./routes/authRoutes');
+const userRoutes = require('./routes/userRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 const chatRoutes = require('./routes/chatRoutes');
+const sessionRoutes = require('./routes/sessionRoutes');
 
 const app = express();
 
@@ -30,11 +32,17 @@ app.get('/api/health', (req, res) => {
 // Auth routes
 app.use('/api/auth', authRoutes);
 
+// User routes (profile and user management)
+app.use('/api/users', userRoutes);
+
 // AI routes (study/quiz/ask/plan)
 app.use('/api/ai', aiRoutes);
 
 // Chat route for PASC conversational feature
 app.use('/api/chat', chatRoutes);
+
+// Session routes for saved chat history
+app.use('/api/sessions', sessionRoutes);
 
 // Basic error handler
 app.use((err, req, res, next) => {
