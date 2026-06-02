@@ -4,6 +4,7 @@
 
 const express = require('express');
 const router = express.Router();
+const authMiddleware = require('../middleware/authMiddleware');
 const {
   signup,
   login,
@@ -12,6 +13,7 @@ const {
   createUser,
   updateUser,
   deleteUser,
+  getProfile,
 } = require('../controllers/userController');
 
 
@@ -22,6 +24,11 @@ router.post('/signup', signup);
 
 // POST login: http://localhost:5000/api/users/login
 router.post('/login', login);
+
+
+// GET profile: http://localhost:5000/api/users/profile
+// This route needs a valid login token.
+router.get('/profile', authMiddleware, getProfile);
 
 
 // GET ROUTES
