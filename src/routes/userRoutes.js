@@ -14,6 +14,8 @@ const {
   updateUser,
   deleteUser,
   getProfile,
+  updateProfile,
+  changePassword,
 } = require('../controllers/userController');
 
 
@@ -29,6 +31,13 @@ router.post('/login', login);
 // GET profile: http://localhost:5000/api/users/profile
 // This route needs a valid login token.
 router.get('/profile', authMiddleware, getProfile);
+
+// UPDATE own profile: PUT http://localhost:5000/api/users/profile
+// Defined before the '/:id' routes so 'profile' is not treated as an id.
+router.put('/profile', authMiddleware, updateProfile);
+
+// CHANGE own password: PUT http://localhost:5000/api/users/password
+router.put('/password', authMiddleware, changePassword);
 
 
 // GET ROUTES
