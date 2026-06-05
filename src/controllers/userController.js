@@ -325,6 +325,116 @@ const getProfile = async (req, res) => {
   }
 };
 
+// Update the Logged-in User's Profile
+// Only allows changing safe fields (name and institution), and only for the
+// account that owns the request (taken from the auth token, not the URL).
+const updateProfile = async (req, res) => {
+  try {
+    const userId = req.user && req.user.id;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+
+    const { name, institution } = req.body;
+
+    // Build an update object with only the fields that were sent.
+    const updates = {};
+    if (typeof name === 'string') {
+      updates.name = name.trim();
+    }
+    if (typeof institution === 'string') {
+      updates.institution = institution.trim();
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      updates,
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    if (!updatedUser) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Profile updated successfully',
+      data: {
+        id: updatedUser._id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        institution: updatedUser.institution || '',
+        degree: updatedUser.degree || '',
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error updating profile',
+      error: error.message,
+    });
+  }
+};
+
+// Change the Logged-in User's Password
+// Requires the current password to be correct before setting a new one.
+const changePassword = async (req, res) => {
+  try {
+    const userId = req.user && req.user.id;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Current and new password are required.',
+      });
+    }
+
+    // New password must meet the same minimum length as signup.
+    if (String(newPassword).length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be at least 6 characters.',
+      });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Make sure the current password is correct before changing it.
+    const isCurrentValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isCurrentValid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Current password is incorrect.',
+      });
+    }
+
+    // Hash and save the new password.
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Password changed successfully',
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error changing password',
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   signup,
   login,
@@ -334,4 +444,6 @@ module.exports = {
   updateUser,
   deleteUser,
   getProfile,
+  updateProfile,
+  changePassword,
 };
