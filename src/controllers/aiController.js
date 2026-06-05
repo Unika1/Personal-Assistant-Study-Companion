@@ -1,4 +1,4 @@
-const gemini = require('../services/geminiService');
+const groq= require('../services/aiService');
 
 // Handle POST /api/ai/study
 // Expects JSON body: { topic: string, level?: string }
