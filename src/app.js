@@ -8,6 +8,8 @@ const userRoutes = require('./routes/userRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const sessionRoutes = require('./routes/sessionRoutes');
+const quizRoutes = require('./routes/quizRoutes');
+const studyRoutes = require('./routes/studyRoutes');
 
 const app = express();
 
@@ -43,6 +45,12 @@ app.use('/api/chat', chatRoutes);
 
 // Session routes for saved chat history
 app.use('/api/sessions', sessionRoutes);
+
+// Quiz routes for generating, answering, and tracking adaptive quizzes
+app.use('/api/quiz', quizRoutes);
+
+// Study routes for AI-generated topic explanations
+app.use('/api/study', studyRoutes);
 
 // Basic error handler
 app.use((err, req, res, next) => {
