@@ -1,4 +1,5 @@
-const { askPASC } = require('../services/geminiService');
+const { askPASC, isQuizRequest } = require('../services/aiService');
+const { buildQuizContext } = require('../services/performanceService');
 const Session = require('../models/Session');
 
 // Turn the first student message into a short session title.
@@ -40,8 +41,17 @@ const sendMessage = async (req, res) => {
   }
 
   try {
-    // Send the message and history to Gemini through askPASC.
-    const aiText = await askPASC(message, history);
+    // If this looks like a quiz request, gather the student's performance so
+    // PASC can adapt the question. For normal chat we skip this extra work
+    // and behave exactly as before.
+    let performanceContext = null;
+    if (isQuizRequest(message)) {
+      performanceContext = await buildQuizContext(userId, message);
+    }
+
+    // Send the message, history, and (for quizzes) the performance context
+    // to PASC through askPASC.
+    const aiText = await askPASC(message, history, performanceContext);
 
     // Find the existing session, or create a new one for the first message.
     let session = null;
