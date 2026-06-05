@@ -36,6 +36,21 @@ const userSchema = new mongoose.Schema({
     required: true,
     minlength: 6,
   },
+
+  // The school or college the student attends. Shown and edited on the
+  // Account page. Optional so existing accounts stay valid.
+  institution: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+
+  // The student's degree or programme. Also shown on the Account page.
+  degree: {
+    type: String,
+    trim: true,
+    default: '',
+  },
 });
 
 const User = mongoose.model('User', userSchema);
