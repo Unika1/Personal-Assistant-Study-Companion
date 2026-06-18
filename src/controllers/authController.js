@@ -98,7 +98,7 @@ const login = async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
-    return res.status(200).json({ message: 'Login successful', token, user: { id: user._id, name: user.name, email: user.email } });
+    return res.status(200).json({ message: 'Login successful', token, user: { id: user._id, name: user.name, email: user.email, language: user.language || 'en' } });
   } catch (error) {
     console.error('Login error:', error);
     return res.status(500).json({ message: 'Login failed. Please try again.' });
