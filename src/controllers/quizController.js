@@ -120,7 +120,7 @@ const submitAnswer = async (req, res) => {
 // asks for a question here and we build it using their performance history.
 const generateQuiz = async (req, res) => {
   const userId = req.user && req.user.id;
-  const { topic } = req.body;
+  const { topic, language } = req.body;
 
   if (!userId) {
     return res.status(401).json({ error: 'Authentication required' });
@@ -136,7 +136,7 @@ const generateQuiz = async (req, res) => {
     const performanceContext = await buildQuizContext(userId, message);
 
     // Ask PASC for one adaptive question (askPASC detects the quiz request).
-    const quiz = await askPASC(message, [], performanceContext);
+    const quiz = await askPASC(message, [], performanceContext, language);
 
     return res.json({ quiz });
   } catch (error) {
