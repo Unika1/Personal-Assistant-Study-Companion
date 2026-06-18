@@ -1,4 +1,5 @@
 const { generateExplanation } = require('../services/aiService');
+const { buildLearnerContext } = require('../services/performanceService');
 
 // This controller powers the dedicated Study page, where a student enters a
 // topic and a difficulty level and gets back a clear AI explanation.
@@ -9,7 +10,7 @@ const { generateExplanation } = require('../services/aiService');
 // Returns: { explanation: string }
 const explainTopic = async (req, res) => {
   const userId = req.user && req.user.id;
-  const { topic, level } = req.body;
+  const { topic, level, language } = req.body;
 
   if (!userId) {
     return res.status(401).json({ error: 'Authentication required' });
@@ -21,8 +22,17 @@ const explainTopic = async (req, res) => {
   }
 
   try {
+    // Build a light learner profile for THIS topic so the explanation depth and
+    // examples adapt to how the student is doing on it. Best-effort only.
+    let learnerContext = null;
+    try {
+      learnerContext = await buildLearnerContext(userId, topic);
+    } catch (contextError) {
+      learnerContext = null;
+    }
+
     // Ask the AI service for the explanation text (defaults to beginner level).
-    const explanation = await generateExplanation(topic, level || 'beginner');
+    const explanation = await generateExplanation(topic, level || 'beginner', language, learnerContext);
 
     return res.json({ explanation });
   } catch (error) {
