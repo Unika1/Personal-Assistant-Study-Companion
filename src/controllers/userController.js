@@ -314,6 +314,7 @@ const getProfile = async (req, res) => {
         degree: user.degree || '',
         firstName: user.firstName || '',
         lastName: user.lastName || '',
+        language: user.language || 'en',
       },
     });
   } catch (error) {
@@ -336,7 +337,7 @@ const updateProfile = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Authentication required.' });
     }
 
-    const { name, institution } = req.body;
+    const { name, institution, language } = req.body;
 
     // Build an update object with only the fields that were sent.
     const updates = {};
@@ -345,6 +346,10 @@ const updateProfile = async (req, res) => {
     }
     if (typeof institution === 'string') {
       updates.institution = institution.trim();
+    }
+    // Only accept the two supported languages; ignore anything else.
+    if (language === 'en' || language === 'ne') {
+      updates.language = language;
     }
 
     const updatedUser = await User.findByIdAndUpdate(
@@ -366,6 +371,7 @@ const updateProfile = async (req, res) => {
         email: updatedUser.email,
         institution: updatedUser.institution || '',
         degree: updatedUser.degree || '',
+        language: updatedUser.language || 'en',
       },
     });
   } catch (error) {
