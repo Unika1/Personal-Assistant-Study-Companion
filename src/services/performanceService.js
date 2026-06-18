@@ -212,12 +212,59 @@ async function buildQuizContext(userId, message) {
     difficulty = await getCurrentDifficulty(userId, targetTopic);
   }
 
-  return { topic: targetTopic, difficulty, weakTopics };
+  // Collect the questions this student was recently asked so the AI can avoid
+  // repeating them. If we have a target topic we only look within that topic;
+  // otherwise we look across all of their recent attempts.
+  const recentQuery = { userId };
+  if (targetTopic) {
+    recentQuery.topic = targetTopic;
+  }
+
+  const recentAttempts = await Performance.find(recentQuery)
+    .sort({ timestamp: -1 })
+    .limit(8)
+    .select('question');
+
+  const recentQuestions = recentAttempts
+    .map((attempt) => attempt.question)
+    .filter(Boolean);
+
+  return { topic: targetTopic, difficulty, weakTopics, recentQuestions };
+}
+
+// Build a small "learner profile" used to personalise normal chat replies and
+// study explanations (NOT quizzes - those already use buildQuizContext).
+//
+// It answers two questions for the AI:
+//   1. What is this student generally weak at?  -> weakTopics
+//   2. If they asked about a specific topic, how are they doing on it?
+//      -> topicStat (their accuracy + mastery on that exact topic, if any)
+//
+// Everything here is optional/best-effort: a brand-new student simply comes
+// back with empty weakTopics and a null topicStat, and the prompts fall back
+// to their normal, non-personalised wording.
+async function buildLearnerContext(userId, topic) {
+  const topicList = await getTopicStats(userId);
+
+  const weakTopics = topicList
+    .filter((item) => item.isWeak)
+    .sort((a, b) => a.accuracy - b.accuracy)
+    .map((item) => ({ topic: item.topic, accuracy: item.accuracy }));
+
+  // If the student named/asked about a specific topic, find their stats on it.
+  let topicStat = null;
+  const wanted = String(topic || '').trim().toLowerCase();
+  if (wanted) {
+    topicStat = topicList.find((item) => item.topic === wanted) || null;
+  }
+
+  return { weakTopics, topicStat };
 }
 
 module.exports = {
   getTopicStats,
   getWeakTopics,
+  buildLearnerContext,
   getCurrentDifficulty,
   getOverallSummary,
   buildQuizContext,
