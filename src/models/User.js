@@ -51,6 +51,15 @@ const userSchema = new mongoose.Schema({
     trim: true,
     default: '',
   },
+
+  // The student's preferred language for PASC's replies ('en' or 'ne').
+  // Stored on the account so the choice follows the student across devices,
+  // not just in one browser's localStorage. Defaults to English.
+  language: {
+    type: String,
+    enum: ['en', 'ne'],
+    default: 'en',
+  },
 });
 
 const User = mongoose.model('User', userSchema);
