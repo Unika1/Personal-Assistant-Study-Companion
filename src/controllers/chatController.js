@@ -1,5 +1,5 @@
 const { askPASC, isQuizRequest } = require('../services/aiService');
-const { buildQuizContext } = require('../services/performanceService');
+const { buildQuizContext, buildLearnerContext } = require('../services/performanceService');
 const Session = require('../models/Session');
 
 // Turn the first student message into a short session title.
@@ -28,7 +28,7 @@ function formatReplyForStorage(reply) {
 // This function handles chat messages from the frontend.
 const sendMessage = async (req, res) => {
   // Read the message, history, and optional session id from the request body.
-  const { message, history, sessionId } = req.body;
+  const { message, history, sessionId, language } = req.body;
   const userId = req.user && req.user.id;
 
   // Check if the message is missing or empty.
@@ -49,9 +49,21 @@ const sendMessage = async (req, res) => {
       performanceContext = await buildQuizContext(userId, message);
     }
 
-    // Send the message, history, and (for quizzes) the performance context
-    // to PASC through askPASC.
-    const aiText = await askPASC(message, history, performanceContext);
+    // For normal (non-quiz) chat, build a light learner profile so PASC can
+    // personalise the reply to the student's weak areas. Best-effort: if this
+    // fails we still answer, just without personalisation.
+    let learnerContext = null;
+    if (!performanceContext) {
+      try {
+        learnerContext = await buildLearnerContext(userId);
+      } catch (contextError) {
+        learnerContext = null;
+      }
+    }
+
+    // Send the message, history, performance context (for quizzes) and learner
+    // context (for normal chat) to PASC through askPASC.
+    const aiText = await askPASC(message, history, performanceContext, language, learnerContext);
 
     // Find the existing session, or create a new one for the first message.
     let session = null;
