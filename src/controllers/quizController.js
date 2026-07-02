@@ -4,6 +4,7 @@ const {
   buildQuizContext,
   getTopicStats,
   getOverallSummary,
+  getStudyStreak,
 } = require('../services/performanceService');
 
 // This controller handles a student SUBMITTING their answer to a quiz question.
@@ -162,12 +163,15 @@ const getStats = async (req, res) => {
     // Overall totals shown at the top of the dashboard.
     const summary = await getOverallSummary(userId);
 
+    // Current consecutive-day study streak (for the home page motivation card).
+    const streak = await getStudyStreak(userId);
+
     // Just the weak topics, weakest first, for the "focus areas" section.
     const weakTopics = topics
       .filter((topic) => topic.isWeak)
       .sort((a, b) => a.accuracy - b.accuracy);
 
-    return res.json({ summary, topics, weakTopics });
+    return res.json({ summary, topics, weakTopics, streak });
   } catch (error) {
     console.error('Quiz stats error:', error);
     return res.status(500).json({ error: 'Could not load your progress' });
