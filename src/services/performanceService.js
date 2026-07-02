@@ -232,6 +232,46 @@ async function buildQuizContext(userId, message) {
   return { topic: targetTopic, difficulty, weakTopics, recentQuestions };
 }
 
+// Work out the student's current "study streak": how many consecutive days,
+// counting back from today, they have answered at least one quiz question.
+// Derived purely from existing Performance timestamps, so it needs no new data.
+//
+// Rules (kept simple and easy to explain):
+//   - a "day" is one calendar day (server local time)
+//   - the streak counts back from today; if there is no activity today but there
+//     was yesterday, the streak still counts (so it only breaks after a full
+//     missed day, not the moment midnight passes)
+async function getStudyStreak(userId) {
+  const attempts = await Performance.find({ userId }).select('timestamp');
+
+  if (attempts.length === 0) {
+    return 0;
+  }
+
+  // Collect the distinct days on which the student was active.
+  const activeDays = new Set(
+    attempts.map((attempt) => new Date(attempt.timestamp).toDateString())
+  );
+
+  // Start from today; if nothing today, allow yesterday as the streak's end.
+  const cursor = new Date();
+  if (!activeDays.has(cursor.toDateString())) {
+    cursor.setDate(cursor.getDate() - 1);
+    if (!activeDays.has(cursor.toDateString())) {
+      return 0;
+    }
+  }
+
+  // Count backwards while each previous day also has activity.
+  let streak = 0;
+  while (activeDays.has(cursor.toDateString())) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  return streak;
+}
+
 // Build a small "learner profile" used to personalise normal chat replies and
 // study explanations (NOT quizzes - those already use buildQuizContext).
 //
@@ -267,6 +307,7 @@ module.exports = {
   buildLearnerContext,
   getCurrentDifficulty,
   getOverallSummary,
+  getStudyStreak,
   buildQuizContext,
   // Exported so other code (and tests) can read the same constants/labels.
   getMasteryLevel,
