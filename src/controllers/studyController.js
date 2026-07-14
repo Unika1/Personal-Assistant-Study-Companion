@@ -1,5 +1,6 @@
 const { generateExplanation } = require('../services/aiService');
 const { buildLearnerContext } = require('../services/performanceService');
+const { recordStudiedTopic } = require('../services/topicHistoryService');
 
 // This controller powers the dedicated Study page, where a student enters a
 // topic and a difficulty level and gets back a clear AI explanation.
@@ -33,6 +34,11 @@ const explainTopic = async (req, res) => {
 
     // Ask the AI service for the explanation text (defaults to beginner level).
     const explanation = await generateExplanation(topic, level || 'beginner', language, learnerContext);
+
+    // Remember that the student studied this topic, so the Quiz page can
+    // offer "quiz on what you just studied". We do not wait for this and we
+    // ignore its errors, so a save problem cannot block the explanation.
+    recordStudiedTopic(userId, topic, 'study').catch(() => {});
 
     return res.json({ explanation });
   } catch (error) {
