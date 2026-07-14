@@ -1,4 +1,5 @@
 const Performance = require('../models/Performance');
+const User = require('../models/User');
 const { extractTopic } = require('./aiService');
 
 // This service is the "brain" that reads a student's saved quiz attempts
@@ -26,6 +27,55 @@ const MINIMUM_ATTEMPTS_FOR_WEAK = 3;
 // the next difficulty. A small window keeps the system responsive to how
 // the student is doing RIGHT NOW, not months ago.
 const RECENT_WINDOW_SIZE = 3;
+
+// The level ladder for the gamification badge. Levels are earned only by
+// CORRECT answers, never by time spent or streaks, so the badge rewards
+// mastery instead of habit. The thresholds are fixed and easy to explain:
+// reach this many total correct answers, reach this level.
+const LEVELS = [
+  { level: 1, name: 'Beginner', minCorrect: 0 },
+  { level: 2, name: 'Learner', minCorrect: 10 },
+  { level: 3, name: 'Explorer', minCorrect: 25 },
+  { level: 4, name: 'Achiever', minCorrect: 50 },
+  { level: 5, name: 'Master', minCorrect: 100 },
+];
+
+// Work out the student's current level from their total correct answers.
+// Returns the level number, its name, and how far the student is toward
+// the next level (a 0 to 1 progress value the frontend can draw as a bar).
+function getLevelInfo(totalCorrect) {
+  const total = Math.max(0, Number(totalCorrect) || 0);
+
+  // Find the highest level whose threshold the student has reached.
+  let current = LEVELS[0];
+  for (const candidate of LEVELS) {
+    if (total >= candidate.minCorrect) {
+      current = candidate;
+    }
+  }
+
+  const next = LEVELS.find((candidate) => candidate.level === current.level + 1) || null;
+
+  // Progress toward the next level. At the top level there is no next
+  // threshold, so progress simply stays full.
+  let progress = 1;
+  if (next) {
+    const span = next.minCorrect - current.minCorrect;
+    progress = span > 0 ? (total - current.minCorrect) / span : 1;
+  }
+
+  return {
+    level: current.level,
+    name: current.name,
+    totalCorrect: total,
+    nextLevelAt: next ? next.minCorrect : null,
+    nextName: next ? next.name : null,
+    // How many more correct answers reach the next level. The frontend shows
+    // this directly ("15 more to Achiever"), which always agrees with the bar.
+    remainingToNext: next ? next.minCorrect - total : 0,
+    progress: Math.min(1, Math.max(0, progress)),
+  };
+}
 
 // Turn an accuracy number (0 to 1) into a simple, human-friendly label.
 // Three bands keep it easy to explain and match the three difficulty rungs.
@@ -186,6 +236,14 @@ async function getOverallSummary(userId) {
   };
 }
 
+// Look up the student's degree (e.g. "BSc Computing") so the prompts can ask
+// for examples that fit their course. Returns '' when the account has no
+// degree set, and in that case the prompts just leave it out.
+async function getStudentDegree(userId) {
+  const user = await User.findById(userId).select('degree');
+  return (user && user.degree && user.degree.trim()) || '';
+}
+
 // Work out everything the AI needs to generate ONE adaptive quiz question
 // for a student: which topic to target and how hard to make it.
 //
@@ -229,7 +287,11 @@ async function buildQuizContext(userId, message) {
     .map((attempt) => attempt.question)
     .filter(Boolean);
 
-  return { topic: targetTopic, difficulty, weakTopics, recentQuestions };
+  // The student's degree is added so the question can use examples from
+  // their own course.
+  const degree = await getStudentDegree(userId);
+
+  return { topic: targetTopic, difficulty, weakTopics, recentQuestions, degree };
 }
 
 // Work out the student's current "study streak": how many consecutive days,
@@ -272,6 +334,21 @@ async function getStudyStreak(userId) {
   return streak;
 }
 
+// True when the student has answered at least one quiz question today.
+// The frontend uses this for the streak flame: lit when today's practice is
+// done, grey when the streak is at risk of ending at midnight.
+async function hasPracticedToday(userId) {
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+
+  const attempt = await Performance.findOne({
+    userId,
+    timestamp: { $gte: startOfToday },
+  }).select('_id');
+
+  return Boolean(attempt);
+}
+
 // Build a small "learner profile" used to personalise normal chat replies and
 // study explanations (NOT quizzes - those already use buildQuizContext).
 //
@@ -280,9 +357,9 @@ async function getStudyStreak(userId) {
 //   2. If they asked about a specific topic, how are they doing on it?
 //      -> topicStat (their accuracy + mastery on that exact topic, if any)
 //
-// Everything here is optional/best-effort: a brand-new student simply comes
-// back with empty weakTopics and a null topicStat, and the prompts fall back
-// to their normal, non-personalised wording.
+// Everything here is optional: a brand-new student simply comes back with
+// empty weakTopics and a null topicStat, and the prompts fall back to their
+// normal, non-personalised wording.
 async function buildLearnerContext(userId, topic) {
   const topicList = await getTopicStats(userId);
 
@@ -298,7 +375,10 @@ async function buildLearnerContext(userId, topic) {
     topicStat = topicList.find((item) => item.topic === wanted) || null;
   }
 
-  return { weakTopics, topicStat };
+  // Their degree/programme, so explanations can use examples that fit it.
+  const degree = await getStudentDegree(userId);
+
+  return { weakTopics, topicStat, degree };
 }
 
 module.exports = {
@@ -308,8 +388,11 @@ module.exports = {
   getCurrentDifficulty,
   getOverallSummary,
   getStudyStreak,
+  hasPracticedToday,
   buildQuizContext,
+  getLevelInfo,
   // Exported so other code (and tests) can read the same constants/labels.
   getMasteryLevel,
   WEAK_TOPIC_THRESHOLD,
+  LEVELS,
 };
