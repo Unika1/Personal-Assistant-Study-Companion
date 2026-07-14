@@ -1,11 +1,14 @@
 const Performance = require('../models/Performance');
-const { askPASC } = require('../services/aiService');
+const { askPASC, explainWrongAnswer } = require('../services/aiService');
 const {
   buildQuizContext,
   getTopicStats,
   getOverallSummary,
   getStudyStreak,
+  hasPracticedToday,
+  getLevelInfo,
 } = require('../services/performanceService');
+const { getRecentStudiedTopics } = require('../services/topicHistoryService');
 
 // This controller handles a student SUBMITTING their answer to a quiz question.
 //
@@ -19,7 +22,7 @@ const {
 // student clicks an option it sends that JSON back plus the chosen letter.
 
 // Decide how hard the NEXT question should be (the "difficulty ladder").
-// Rule, kept deliberately simple so it is easy to explain:
+// The rule is kept simple on purpose so it is easy to explain:
 //   - if the student just got it WRONG  -> step one level easier
 //   - if the student just got it RIGHT  -> step one level harder
 // The three rungs are easy -> medium -> hard.
@@ -55,13 +58,16 @@ const submitAnswer = async (req, res) => {
   const userId = req.user && req.user.id;
 
   // Read the answer details sent back by the frontend.
+  // options and language are used for the personalised wrong-answer feedback.
   const {
     topic,
     question,
+    options,
     correct,
     studentAnswer,
     difficulty,
     explanation,
+    language,
   } = req.body;
 
   // Make sure the student is logged in.
@@ -99,11 +105,42 @@ const submitAnswer = async (req, res) => {
     // Work out how hard the next question should be.
     const nextDifficulty = getNextDifficulty(questionDifficulty, isCorrect);
 
+    // Pick the explanation to show.
+    //   - correct answer -> the normal explanation is fine
+    //   - wrong answer   -> ask the AI to explain why the student's OWN
+    //                       choice was wrong. If that call fails we fall
+    //                       back to the normal explanation.
+    let feedback = explanation || '';
+    let isPersonalised = false;
+
+    if (!isCorrect && options && Object.keys(options).length > 0) {
+      try {
+        const targeted = await explainWrongAnswer({
+          topic,
+          question,
+          options,
+          correct,
+          studentAnswer,
+          language,
+        });
+        if (targeted) {
+          feedback = targeted;
+          isPersonalised = true;
+        }
+      } catch (aiError) {
+        // Keep the normal explanation. Grading should still work even when
+        // the feedback call fails.
+        console.error('Wrong-answer feedback error:', aiError);
+      }
+    }
+
     // Tell the frontend the result so it can show feedback to the student.
+    // isPersonalised tells the UI which label to show above the feedback.
     return res.json({
       isCorrect,
       correctAnswer: correct,
-      explanation: explanation || '',
+      explanation: feedback,
+      isPersonalised,
       nextDifficulty,
     });
   } catch (error) {
@@ -171,10 +208,37 @@ const getStats = async (req, res) => {
       .filter((topic) => topic.isWeak)
       .sort((a, b) => a.accuracy - b.accuracy);
 
-    return res.json({ summary, topics, weakTopics, streak });
+    // The student's level badge, earned from total correct answers.
+    const level = getLevelInfo(summary.totalCorrect);
+
+    // Whether today's practice is done. The streak flame in the UI is lit
+    // when this is true and grey when the streak would end at midnight.
+    const practicedToday = await hasPracticedToday(userId);
+
+    return res.json({ summary, topics, weakTopics, streak, level, practicedToday });
   } catch (error) {
     console.error('Quiz stats error:', error);
     return res.status(500).json({ error: 'Could not load your progress' });
+  }
+};
+
+// Handle GET /api/quiz/recent-topics
+// Returns: { topics: ['recursion', 'sql joins', ...] } with the topics this
+// student most recently studied (Study page + chat), newest first.
+// The Quiz page shows these as "quiz on what you just studied" buttons.
+const getRecentTopics = async (req, res) => {
+  const userId = req.user && req.user.id;
+
+  if (!userId) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  try {
+    const topics = await getRecentStudiedTopics(userId);
+    return res.json({ topics });
+  } catch (error) {
+    console.error('Recent topics error:', error);
+    return res.status(500).json({ error: 'Could not load recent topics' });
   }
 };
 
@@ -182,6 +246,7 @@ module.exports = {
   submitAnswer,
   generateQuiz,
   getStats,
+  getRecentTopics,
   // Exported so the AI service can reuse the same ladder rules later.
   getNextDifficulty,
 };
