@@ -3,6 +3,7 @@ const {
   submitAnswer,
   generateQuiz,
   getStats,
+  getRecentTopics,
 } = require('../controllers/quizController');
 const authMiddleware = require('../middleware/authMiddleware');
 
@@ -17,5 +18,9 @@ router.post('/answer', authMiddleware, submitAnswer);
 
 // Return the student's progress summary and per-topic stats (Progress page).
 router.get('/stats', authMiddleware, getStats);
+
+// Return the topics the student recently studied (Study page + chat), so the
+// Quiz page can offer "quiz on what you just studied" chips.
+router.get('/recent-topics', authMiddleware, getRecentTopics);
 
 module.exports = router;
