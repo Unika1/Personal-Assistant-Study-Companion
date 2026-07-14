@@ -1,5 +1,9 @@
 const { askPASC, isQuizRequest } = require('../services/aiService');
 const { buildQuizContext, buildLearnerContext } = require('../services/performanceService');
+const {
+  extractStudiedTopicFromChat,
+  recordStudiedTopic,
+} = require('../services/topicHistoryService');
 const Session = require('../models/Session');
 
 // Turn the first student message into a short session title.
@@ -61,6 +65,20 @@ const sendMessage = async (req, res) => {
       }
     }
 
+    // If this chat message clearly asks to learn a topic ("explain
+    // recursion", "what is a linked list"), remember that topic so the Quiz
+    // page can offer a quiz on it later. We skip quiz requests because
+    // asking for a quiz is practice, not studying a new topic.
+    // The topic is also sent back to the frontend so the chat can show a
+    // "quiz me on this" shortcut right under the answer.
+    let studiedTopic = '';
+    if (!performanceContext) {
+      studiedTopic = extractStudiedTopicFromChat(message);
+      if (studiedTopic) {
+        recordStudiedTopic(userId, studiedTopic, 'chat').catch(() => {});
+      }
+    }
+
     // Send the message, history, performance context (for quizzes) and learner
     // context (for normal chat) to PASC through askPASC.
     const aiText = await askPASC(message, history, performanceContext, language, learnerContext);
@@ -94,11 +112,13 @@ const sendMessage = async (req, res) => {
 
     await session.save();
 
-    // Return the AI response as JSON.
+    // Return the AI response as JSON. studiedTopic is included (when one was
+    // detected) so the frontend can offer a quiz shortcut on that topic.
     return res.json({
       response: aiText,
       sessionId: session._id,
       sessionTitle: session.title,
+      studiedTopic: studiedTopic || undefined,
     });
   } catch (error) {
     // Log the real error on the server for debugging.
