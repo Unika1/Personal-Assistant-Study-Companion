@@ -97,8 +97,17 @@ function buildPersonalNote(learnerContext) {
   const context = learnerContext || {};
   const weakTopics = Array.isArray(context.weakTopics) ? context.weakTopics : [];
   const topicStat = context.topicStat || null;
+  const degree = String(context.degree || '').trim();
 
   const lines = [];
+
+  // If we know the student's degree, ask for examples that fit it. Examples
+  // from the student's own field of study are easier to relate to.
+  if (degree) {
+    lines.push(
+      `This student is studying ${degree}. When you give examples or analogies, prefer ones relevant to that programme.`
+    );
+  }
 
   // If we know how they are doing on the exact topic they asked about, lead
   // with that - it is the most relevant signal.
@@ -167,8 +176,17 @@ function buildAdaptiveInstructions(performanceContext) {
   const recentQuestions = Array.isArray(context.recentQuestions)
     ? context.recentQuestions
     : [];
+  const degree = String(context.degree || '').trim();
 
   const lines = [];
+
+  // If we know the student's degree, ask the model to set the question in
+  // that field when it makes sense (but not to force it where it does not fit).
+  if (degree) {
+    lines.push(
+      `This student is studying ${degree}. Where it fits naturally, set the question scenario in a context relevant to that programme.`
+    );
+  }
 
   // Describe what each difficulty level actually means, so the model produces
   // a genuinely harder or easier question (not just a different label).
@@ -271,7 +289,8 @@ Rules:
 - Set the "difficulty" field to one of: easy, medium, hard.
 - Keep the options clear and short.
 - Make sure exactly one option is correct.
-- The explanation should be short and helpful.`;
+- The explanation should be short and helpful.
+- Never use the em dash character (—) anywhere in the question, options, or explanation. Use commas or full stops instead.`;
 
   const chatMessages = [{ role: 'system', content: quizPrompt }];
 
@@ -318,6 +337,59 @@ Rules:
     correct: String(quizData.correct || '').trim(),
     explanation: String(quizData.explanation || '').trim(),
   };
+}
+
+// Explain WHY the student's specific wrong answer is wrong.
+//
+// The normal quiz explanation is written before the student answers, so it
+// can only say why the correct option is right. This function is called
+// AFTER a wrong answer and is given the exact option the student chose, so
+// the feedback can talk about what the student got confused about, not just
+// repeat the correct answer.
+//
+// Returns plain text. If this call fails, the caller shows the normal
+// explanation instead, so grading still works.
+async function explainWrongAnswer({ topic, question, options, correct, studentAnswer, language = 'en' }) {
+  const languageRule = languageInstruction(language);
+
+  // Show the model all the options so it can reason about the wrong one.
+  const optionLines = Object.entries(options || {})
+    .map(([letter, text]) => `${letter}: ${text}`)
+    .join('\n');
+
+  const systemPrompt = `You are PASC, a friendly AI study companion for technology students in Kathmandu, Nepal.
+
+A student just answered a quiz question WRONG. Your job is to correct their specific misconception, not to give a generic explanation.
+
+LANGUAGE INSTRUCTION:
+${languageRule}
+
+Rules:
+- First, briefly explain what choosing THEIR option suggests they misunderstood.
+- Then explain why the correct option is right.
+- Then add a short walk-through: numbered steps (2 to 4 steps) showing how to reason from the question to the correct answer, so the student can follow the thinking next time. Start this part with the line "Walk-through:".
+- Be encouraging, never mocking.
+- Plain text only: no markdown, no headings, no bullet points (numbered steps like "1." are fine).
+- Never use the em dash character (—). Use commas or full stops instead.`;
+
+  const userPrompt = `Topic: ${topic || 'general'}
+Question: ${question}
+Options:
+${optionLines}
+Correct answer: ${correct}
+The student chose: ${studentAnswer}
+
+Explain why the student's choice (${studentAnswer}) is wrong and why ${correct} is correct.`;
+
+  const text = await runChat({
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+    language,
+  });
+
+  return String(text || '').trim();
 }
 
 // Pull a likely TOPIC out of a free-text quiz request.
@@ -392,6 +464,7 @@ Explain concepts simply and clearly.
 Guide students to think before giving answers.
 Do not ask "Want me to quiz you?" after every answer.
 Only create or suggest a quiz when the student clearly asks for a quiz.
+Never use the em dash character (—) in your replies. Use commas or full stops instead.
 
 PERSONALISATION (about THIS student - use it to tailor your answer, but never read these notes aloud):
 ${personalNote || 'No performance data yet; answer normally.'}
@@ -467,7 +540,8 @@ Formatting rules:
 - Use the labels "Definition:", "Key Points:" and "Example:" exactly as shown.
 - Write list items as lines starting with "- ".
 - Do NOT use markdown headings (#), bold stars (**), tables, or code fences.
-- Keep the language simple and encouraging.`;
+- Keep the language simple and encouraging.
+- Never use the em dash character (—). Use commas or full stops instead.`;
 
   return runChat({
     messages: [
@@ -487,4 +561,5 @@ module.exports = {
   isQuizRequest,
   extractTopic,
   generateExplanation,
+  explainWrongAnswer,
 };
